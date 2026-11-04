@@ -165,6 +165,11 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 		return;
 	}
 
+	if (from->type != NA_BOT && !SV_TickrateClientCompatible(userinfo)) {
+		NET_OutOfBandPrint(NS_SERVER, from, "error\nThis server requires the matching 100 Hz CoD4x client.\n");
+		return;
+	}
+
 	version = atoi( Info_ValueForKey( userinfo, "protocol" ));
 
 #ifdef DEVRELEASE
@@ -417,6 +422,7 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 	}
 #endif
 
+	SV_ResetClientSnapshots(newcl);
 	newcl->updateBeginTime = bckbegintime;
 
 	newcl->power = 0; //Sets the default power for the client
@@ -745,34 +751,20 @@ void SV_UserinfoChanged( client_t *cl ) {
 		cl->rate = 1048576;	// lans should not rate limit
 	} else {
 		val = Info_ValueForKey (cl->userinfo, "rate");
-		if (strlen(val)) {
-			i = atoi(val);
-			cl->rate = i;
-			if (cl->rate < 2500) {
-				cl->rate = 2500;
-			} else if (cl->rate >= 25000) {
-				cl->rate = sv_maxRate->integer;
-			}
-		} else {
-			cl->rate = 5000;
-		}
+		cl->rate = Tickrate_ClientRate(strlen(val) ? atoi(val) : 5000,
+			sv_minRate->integer, sv_maxRate->integer);
 	}
-	// snaps command
+	// snaps command: stock floor is 10; sv_minSnaps raises it, and defaults to every world
+	// frame above 20 Hz. Never more than one snapshot per frame.
 	val = Info_ValueForKey (cl->userinfo, "snaps");
 
-	i = sv_fps->integer;
-
-	if(strlen(val))
-	{
-		i = atoi(val);
-
-		if(i < 10)
-			i = 10;
-		else if(i > sv_fps->integer)
-			i = sv_fps->integer;
-	}
-	
+	i = strlen(val) ? atoi(val) : sv_fps->integer;
+	int minimumSnaps = sv_minSnaps->integer ? sv_minSnaps->integer : SV_FrameMsec() < 50 ? sv_fps->integer : 10;
+	if (i < minimumSnaps) i = minimumSnaps;
+	if (i > sv_fps->integer) i = sv_fps->integer;
 	cl->snapshotMsec = 1000 / i;
+
+	SV_UpdateClientDeltaCapacity(cl);
 
 	val = Info_ValueForKey(cl->userinfo, "cl_voice");
 	cl->sendVoice = atoi(val);
@@ -1036,7 +1028,7 @@ __optimize3 __regparm3 void SV_UserMove( client_t *cl, msg_t *msg, qboolean delt
 	}
 
 	// save time for ping calculation
-	ackTime = &cl->frames[ cl->messageAcknowledge & PACKET_MASK ].messageAcked;
+	ackTime = &SV_ClientSnapshot(cl, cl->messageAcknowledge)->messageAcked;
 	sysTime = Sys_Milliseconds();
 	if(*ackTime == 0xFFFFFFFF)
 		*ackTime = sysTime;
@@ -1296,6 +1288,7 @@ gentity_t* SV_AddBotClient( char* requested_name ){
 
 	//gotnewcl:
 	Com_Memset(cl, 0x00, sizeof(client_t));
+	SV_ResetClientSnapshots(cl);
 
 	cl->power = 0; //Sets the default power for the client
 	// (build a new connection
@@ -1954,6 +1947,10 @@ SV_UpdateUserinfo_f
 ==================
 */
 static void SV_UpdateUserinfo_f( client_t *cl ) {
+	if (cl->netchan.remoteAddress.type != NA_BOT && !SV_TickrateClientCompatible(SV_Cmd_Argv(1))) {
+		SV_DropClient(cl, "This server requires the matching 100 Hz CoD4x client.");
+		return;
+	}
 	Q_strncpyz( cl->userinfo, SV_Cmd_Argv( 1 ), sizeof( cl->userinfo ) );
 
 	SV_UserinfoChanged( cl );

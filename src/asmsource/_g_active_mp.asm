@@ -1,3 +1,4 @@
+	extern g_frame_msec
 ;Imports of g_active_mp:
 	extern g_entities
 	extern bgs
@@ -2570,7 +2571,7 @@ SpectatorClientEndFrame_30:
 	mov eax, [esi+0x2f74]
 	test eax, eax
 	jz SpectatorClientEndFrame_50
-	sub eax, 0x32
+	sub eax, [g_frame_msec]
 	mov [esi+0x2f74], eax
 SpectatorClientEndFrame_20:
 	mov eax, [esi+0x2f74]

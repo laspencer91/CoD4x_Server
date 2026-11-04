@@ -3187,9 +3187,8 @@ IntegratePosAndRot:
 	mov edx, [ebp+0x8]
 	mov eax, [edx+0x164]
 	lea edi, [eax+0xc0]
-	mov edx, level
-	cvtsi2ss xmm0, dword [edx+0x1f4]
-	mulss xmm0, [_float_0_00100000]
+	; This integrator runs on the vehicle's independent 50 ms think schedule.
+	movss xmm0, dword [_float_0_05000000]
 	movss [ebp-0xa4], xmm0
 	lea edx, [eax+0x138]
 	mov [ebp-0xa0], edx
@@ -5498,9 +5497,8 @@ G_VehEntHandler_Think:
 	shl edx, 0x4
 	add edx, s_vehicleInfos
 	mov [ebp-0xb4], edx
-	mov eax, level
-	cvtsi2ss xmm0, dword [eax+0x1f4]
-	mulss xmm0, [_float_0_00100000]
+	; G_VehEntHandler_Think reschedules itself every 50 ms, independent of sv_fps.
+	movss xmm0, dword [_float_0_05000000]
 	movss [ebp-0xb0], xmm0
 	test byte [esi+0x1c0], 0x8
 	jnz G_VehEntHandler_Think_10
@@ -5765,8 +5763,7 @@ G_VehEntHandler_Think_100:
 	mov eax, [edi+0x1d4]
 	test eax, eax
 	jle G_VehEntHandler_Think_170
-	mov ecx, level
-	sub eax, [ecx+0x1f4]
+	sub eax, 50
 	mov [edi+0x1d4], eax
 	test eax, eax
 	jle G_VehEntHandler_Think_180

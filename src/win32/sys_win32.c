@@ -36,6 +36,26 @@
 #include <inttypes.h>
 #include <io.h>
 #include <Shlobj.h>
+#include <mmsystem.h>
+
+static qboolean highResolutionTimer;
+
+static void Sys_RestoreTimerResolution(void)
+{
+    if (highResolutionTimer) timeEndPeriod(1);
+}
+
+qboolean Sys_EnableHighResolutionTimer(void)
+{
+    if (highResolutionTimer) return qtrue;
+    if (timeBeginPeriod(1) != TIMERR_NOERROR) return qfalse;
+    if (atexit(Sys_RestoreTimerResolution) != 0) {
+        timeEndPeriod(1);
+        return qfalse;
+    }
+    highResolutionTimer = qtrue;
+    return qtrue;
+}
 
 void Sys_ShowErrorDialog(const char* functionName);
 void Sys_InitThreadContext();

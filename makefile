@@ -44,7 +44,7 @@ endif
 CC=gcc
 CPP=g++
 WIN_DEFINES=WINVER=0x501
-LINUX_DEFINES=_GNU_SOURCE
+LINUX_DEFINES=_GNU_SOURCE _FILE_OFFSET_BITS=64
 COMMON_FLAGS=-m32 -msse2 -mfpmath=sse -Wall -fno-omit-frame-pointer -fmax-errors=15
 CFLAGS=$(COMMON_FLAGS) -std=gnu11
 CXXFLAGS=$(COMMON_FLAGS) -std=gnu++11
@@ -196,14 +196,14 @@ endif
 
 ###############################
 # A rule to link server binary.
-$(TARGET): $(OS_OBJ) $(C_OBJ) $(CPP_OBJ) $(ZLIB_OBJ) $(ASSETS_OBJ) $(ASM_OBJ) obj/version.o
+$(TARGET): $(OS_OBJ) $(C_OBJ) $(CPP_OBJ) $(ZLIB_OBJ) $(ASSETS_OBJ) $(ASM_OBJ) $(OBJ_DIR)/version.o
 	@echo   $(CC) $(TARGET)
 # CFLAGS for compiler, LFLAGS for linker.
 	@$(CC) $(LFLAGS) -o $@ $^ $(RESOURCE_FILE) $(LLIBS)
 
 ################################
 # A rule to make version module.
-obj/version.o: src/version/version.c FORCE
+$(OBJ_DIR)/version.o: src/version/version.c FORCE
 	@echo   $(CC)  $@ $(C_DEFINES)
 	@$(CC) -c $(CFLAGS) $(DCFLAGS) $(C_DEFINES) -o $@ $<
 
@@ -301,3 +301,10 @@ plugins:
 
 
 .PHONY: plugins
+
+.PHONY: test-tickrate
+test-tickrate: $(BIN_DIR)/tickrate_test$(BIN_EXT)
+	$(BIN_DIR)/tickrate_test$(BIN_EXT)
+
+$(BIN_DIR)/tickrate_test$(BIN_EXT): tools/tests/tickrate_test.c src/tickrate.h
+	$(CC) $(COMMON_FLAGS) -std=c11 -UNDEBUG -O2 -Wall -Wextra -Werror $< -lm -o $@

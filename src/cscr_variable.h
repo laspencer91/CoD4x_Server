@@ -96,6 +96,7 @@ unsigned int __cdecl FindPrevSibling(unsigned int id);
 unsigned int Scr_GetObjectType(unsigned int id);
 unsigned int __cdecl Scr_GetThreadNotifyName(unsigned int startLocalId);
 unsigned int __cdecl Scr_GetThreadWaitTime(unsigned int startLocalId);
+unsigned int __cdecl Scr_GetThreadPriorWakeTime(unsigned int startLocalId);
 void __cdecl Scr_ClearWaitTime(unsigned int startLocalId);
 unsigned int __cdecl GetSafeParentLocalId(unsigned int threadId);
 unsigned int __cdecl Scr_GetVariableFieldIndex(unsigned int parentId, unsigned int name);

@@ -2836,6 +2836,7 @@ __cdecl void SV_Shutdown( const char *finalmsg ) {
     // free server static data
     Cvar_SetBool( com_sv_running, qfalse );
 
+    SV_FreeSnapshotStorage();
     memset( &svs, 0, sizeof( svs ) );
 
     Com_Printf(CON_CHANNEL_SERVER, "---------------------------\n" );
@@ -3119,7 +3120,9 @@ void SV_InitCvarsOnce(void){
     sv_referencedFFNames = Cvar_RegisterString("sv_referencedFFNames", "", 0x48, "Names of all referenced FastFiles used by the server");
     sv_serverid = Cvar_RegisterInt("sv_serverid", 0, 0x80000000, 0x7fffffff, 0x48, "The current id of server to let client and server distinguish between gamestates");
     sv_pure = Cvar_RegisterBool("sv_pure", qtrue, 0xc, "Cannot use modified IWD files");
-    sv_fps = Cvar_RegisterInt("sv_fps", 20, 1, 250, 0, "Server frames per second");
+    // Stock range kept so an unsupported value reaches SV_ConfigureTickrate's error instead of being clamped silently.
+    sv_fps = Cvar_RegisterInt("sv_fps", 20, 1, 250, 0, "World frames per second (20 or 100), chosen on first map; restart process to change");
+    SV_RegisterTickrate();
     sv_showAverageBPS = Cvar_RegisterBool("sv_showAverageBPS", qfalse, 0, "Show average bytes per second for net debugging");
     sv_botsPressAttackBtn = Cvar_RegisterBool("sv_botsPressAttackBtn", qtrue, 0, "Allow testclients to press attack button");
     sv_debugRate = Cvar_RegisterBool("sv_debugRate", qfalse, 0, "Enable snapshot rate debugging info");
@@ -3160,6 +3163,11 @@ void SV_CalcPings( void ) {
     client_t    *cl;
     int total, count;
     int delta;
+    unsigned int now = Sys_Milliseconds();
+    int slots = SV_SnapshotSlots();
+    int frameMsec = SV_FrameMsec();
+    int samples = 1600 / frameMsec; // Stock's 32 frames represent about 1.6 seconds.
+    if (samples > slots) samples = slots;
 
     for ( i = 0 ; i < sv_maxclients->integer ; i++ ) {
         cl = &svs.clients[i];
@@ -3180,11 +3188,14 @@ void SV_CalcPings( void ) {
 
         total = 0;
         count = 0;
-        for ( j = 0 ; j < PACKET_BACKUP ; j++ ) {
-            if ( cl->frames[j].messageAcked == 0xFFFFFFFF ) {
+        clientSnapshot_t *frames = SV_ClientSnapshot(cl, 0);
+        for ( j = 1 ; j <= samples ; j++ ) {
+            clientSnapshot_t *frame = &frames[(cl->netchan.outgoingSequence - j) & (slots - 1)];
+            if ( frame->messageAcked == 0xFFFFFFFF ||
+                 (frameMsec < 50 && now - frame->messageSent > 1600)) {
                 continue;
             }
-            delta = cl->frames[j].messageAcked - cl->frames[j].messageSent;
+            delta = frame->messageAcked - frame->messageSent;
             count++;
             total += delta;
         }
@@ -3467,6 +3478,11 @@ void SV_SetServerStaticHeader()
 
 void SV_InitSnapshot()
 {
+  int i;
+  for (i = 0; i < sv_maxclients->integer; ++i) {
+    SV_ResetClientSnapshots(&svs.clients[i]);
+    svs.clients[i].deltaMessage = -1;
+  }
   svs.nextSnapshotEntities = 0;
   svs.nextSnapshotClients = 0;
   //sv.inFrame = 0;
@@ -3516,6 +3532,7 @@ qboolean SV_FFAPlayerCanBlock(){
 
 //Few custom added things which should happen if we load a new level or restart a level
 void SV_PreLevelLoad(){
+    SV_ConfigureTickrate();
     Com_UpdateRealtime();
     time_t realtime = Com_GetRealtime();
     char *timestr = ctime(&realtime);
@@ -3540,7 +3557,7 @@ void SV_PreLevelLoad(){
 
 void SV_PostLevelLoad(){
     PHandler_Event(PLUGINS_ONSPAWNSERVER, NULL);
-    sv.frameusec = 1000000 / sv_fps->integer;
+    sv.frameusec = SV_FrameMsec() * 1000;
 }
 
 void SV_BuildXAssetCSString()
@@ -3734,6 +3751,7 @@ void SV_MapRestart( qboolean fastRestart ){
 
 /*    SV_InitCvars();*/
     SV_InitArchivedSnapshot();
+    SV_InitSnapshot();
     svs.snapFlagServerBit ^= 4;
 
     SV_GenerateServerId(qfalse); //Short restart
@@ -3752,7 +3770,7 @@ void SV_MapRestart( qboolean fastRestart ){
 /*    
     // run a few frames to allow everything to settle
     for ( i = 0 ; i < 3 ; i++ ) {
-        svs.time += 100;
+        svs.time += SV_FrameMsec();
         SV_RunFrame();
     }
 */
@@ -4141,7 +4159,7 @@ unsigned int SV_FrameUsec()
     {
         unsigned int frameUsec;
 
-        frameUsec = 1000000 / sv_fps->integer;
+        frameUsec = sv.frameusec ? sv.frameusec : 1000000 / sv_fps->integer;
 
         if(frameUsec < sv.timeResidual)
             return 0;
@@ -4661,8 +4679,7 @@ void SV_Startup( void ) {
         svs.numSnapshotEntities = sv_maxclients->integer * 4 * 64;
     }
 */
-    svs.numSnapshotEntities = 0x2A000;
-    svs.numSnapshotClients = 32 * sv_maxclients->integer * sv_maxclients->integer;
+    SV_InitSnapshotStorage();
     svs.initialized = qtrue;
 
     //1st OOBProfilepacket would get time = svs.time
@@ -4921,7 +4938,7 @@ void SV_SpawnServer(const char *mapname)
 
   for(i = 0; i < 3; ++i)
   {
-    svs.time += 100;
+    svs.time += SV_FrameMsec() == 50 ? 100 : SV_FrameMsec();
     SV_RunFrame();
   }
 

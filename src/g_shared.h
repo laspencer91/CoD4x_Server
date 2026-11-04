@@ -178,6 +178,15 @@ typedef struct
 } level_locals_t;
 
 extern level_locals_t level;
+// World frame as the asm sources read it (g_main_mp.cpp); mirrors level.framerate.
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern int g_frame_msec;
+extern float g_frame_rate;
+#ifdef __cplusplus
+}
+#endif
 
 struct turretInfo_s
 {

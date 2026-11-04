@@ -1,3 +1,4 @@
+	extern g_frame_msec
 ;Imports of g_misc_mp:
 	extern _ZN9EntHandle6setEntEP9gentity_s
 	extern floorf
@@ -1494,7 +1495,7 @@ turret_think_client_200:
 	movzx eax, byte [edx+0x44]
 	mov [edi+0x80], eax
 	mov eax, [edx+0x28]
-	sub eax, 50
+	sub eax, [g_frame_msec]
 	mov [edx+0x28], eax
 	test eax, eax
 	jg turret_think_client_70

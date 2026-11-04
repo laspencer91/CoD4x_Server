@@ -105,6 +105,7 @@ int SV_BotAllocateClient( void ) {
 
 	//gotnewcl:
 	Com_Memset(cl, 0x00, sizeof(client_t));
+	SV_ResetClientSnapshots(cl);
 
 	cl->power = 0; //Sets the default power for the client
 	// (build a new connection
@@ -765,7 +766,7 @@ int EntityInPVS( int client, int entityNum ) {
 	int i;
 
 	cl = &svs.clients[client];
-	frame = &cl->frames[cl->netchan.outgoingSequence & PACKET_MASK];
+	frame = SV_ClientSnapshot(cl, cl->netchan.outgoingSequence);
 	for ( i = 0; i < frame->num_entities; i++ ) {
 		if ( svs.snapshotEntities[( frame->first_entity + i ) % svs.numSnapshotEntities].number == entityNum ) {
 			return qtrue;
@@ -785,7 +786,7 @@ int SV_BotGetSnapshotEntity( int client, int sequence ) {
 	clientSnapshot_t    *frame;
 
 	cl = &svs.clients[client];
-	frame = &cl->frames[cl->netchan.outgoingSequence & PACKET_MASK];
+	frame = SV_ClientSnapshot(cl, cl->netchan.outgoingSequence);
 	if ( sequence < 0 || sequence >= frame->num_entities ) {
 		return -1;
 	}

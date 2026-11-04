@@ -11,6 +11,7 @@
 #include "xassets.h"
 #include "xassets/rawfile.h"
 #include "cscr_variable.h"
+extern "C" void VM_ResetWaitPhase(unsigned int id);
 
 #define VAR_STAT_MASK 0x60
 #define VAR_MASK 0x1F
@@ -2681,8 +2682,18 @@ unsigned int __cdecl Scr_GetThreadNotifyName(unsigned int startLocalId)
 }
 
 
+/* The high bits of a root thread's status word keep its last wake time after VM_Resume
+ * (Scr_ClearWaitTime only clears the type), a notify string id after a waittill, and zero
+ * for a new or reused id. Fractional wait carry keys on it; see Tickrate_Wait. */
+unsigned int __cdecl Scr_GetThreadPriorWakeTime(unsigned int startLocalId)
+{
+  return gScrVarGlob.variableList[startLocalId + VARIABLELIST_PARENT_BEGIN].w.status >> VAR_NAME_BITS;
+}
+
 void __cdecl Scr_SetThreadWaitTime(unsigned int startLocalId, unsigned int waitTime)
 {
+  // Same-frame waits, including waittillframeend, interrupt a timed wait chain.
+  if (waitTime == gScrVarPub.time) VM_ResetWaitPhase(startLocalId);
   VariableValueInternal *entryValue;
 
   entryValue = &gScrVarGlob.variableList[startLocalId + VARIABLELIST_PARENT_BEGIN];
@@ -2699,6 +2710,8 @@ void __cdecl Scr_SetThreadWaitTime(unsigned int startLocalId, unsigned int waitT
 
 void __cdecl Scr_SetThreadNotifyName(unsigned int startLocalId, unsigned int stringValue)
 {
+  // A notify string id can equal a previous wake key.
+  VM_ResetWaitPhase(startLocalId);
   VariableValueInternal *entryValue;
 
   entryValue = &gScrVarGlob.variableList[startLocalId + VARIABLELIST_PARENT_BEGIN];

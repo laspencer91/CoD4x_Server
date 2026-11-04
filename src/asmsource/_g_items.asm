@@ -1,3 +1,5 @@
+	extern g_frame_msec
+	extern g_frame_rate
 ;Imports of g_items:
 	extern BG_GetWeaponDef
 	extern G_rand
@@ -2607,7 +2609,7 @@ G_RunItem_30:
 	mov [esp+0x8], eax
 	mov eax, level
 	mov eax, [eax+0x1ec]
-	add eax, 0x32
+	add eax, [g_frame_msec]
 	mov [esp+0x4], eax
 	lea eax, [esi+0xc]
 	mov [esp], eax
@@ -2793,7 +2795,8 @@ G_RunItem_130:
 	mov eax, level
 	mov eax, [eax+0x1ec]
 	mov [esi+0x10], eax
-	mov dword [esi+0x14], 0x32
+	mov eax, [g_frame_msec]
+	mov [esi+0x14], eax
 	lea edx, [esi+0x18]
 	mov eax, [edi]
 	mov [esi+0x18], eax
@@ -2814,7 +2817,7 @@ G_RunItem_130:
 	movaps xmm0, xmm2
 	subss xmm0, [ecx]
 	movss [esi+0x2c], xmm0
-	movss xmm0, dword [_float_20_00000000]
+	movss xmm0, dword [g_frame_rate]
 	mulss xmm1, xmm0
 	movss [esi+0x24], xmm1
 	movss xmm1, dword [eax+0x4]

@@ -59,3 +59,11 @@ plugins/mysql
 
 # Wth this is here?
 sys_error.txt
+
+# Isolated platform builds and native-test output.
+/bin-*/
+/obj-*/
+/out/
+__pycache__/
+
+/bin/tickrate_test

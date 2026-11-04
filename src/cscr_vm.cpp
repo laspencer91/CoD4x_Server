@@ -6,6 +6,7 @@
 #include "cmd.h"
 #include "g_shared.h"
 #include <setjmp.h>
+#include "tickrate.h"
 
 int g_script_error_level;
 jmp_buf g_script_error[33];
@@ -13,6 +14,14 @@ char error_message[1024];
 cvar_t* logScriptTimes;
 cvar_t* scrVmEnableScripts;
 int gScrExecuteTime;
+extern function_stack_t gFs;
+static tickrateWaitPhase_t waitPhases[0x8000];
+
+extern "C" void VM_ResetWaitPhase(unsigned int id)
+{
+    if (id < sizeof(waitPhases) / sizeof(waitPhases[0]))
+        memset(&waitPhases[id], 0, sizeof(waitPhases[id]));
+}
 
 extern "C" VariableValue GetEntityFieldValue(unsigned int classnum, int entnum, int offset)
 {
@@ -544,6 +553,7 @@ void Scr_Notify(gentity_t *ent, unsigned short constString, unsigned int numArgs
 
 void Scr_InitSystem()
 {
+    memset(waitPhases, 0, sizeof(waitPhases));
     gScrVarPub.timeArrayId = AllocObject();
     gScrVarPub.pauseArrayId = Scr_AllocArray();
     gScrVarPub.levelId = AllocObject();
@@ -562,36 +572,29 @@ void Scr_UpdateDebugger()
 
 int VM_CalcWaitTime(VariableValue *waitval)
 {
-    int waitTime;
-    if ( waitval->type == VAR_FLOAT )
-    {
-        if ( waitval->u.floatValue < 0.0 )
-        {
-            Scr_Error("negative wait is not allowed");
-            return 1;
-        }
-        waitTime = f2rint(level.framerate * waitval->u.floatValue);
-        if ( !waitTime && waitval->u.floatValue != 0.0 )
-        {
-          waitTime = 1;
-        }
-    }
-    else if ( waitval->type == VAR_INTEGER )
-    {
-        if ( waitval->u.intValue < 0.0 )
-        {
-            Scr_Error("negative wait is not allowed");
-            return 1;
-        }
-        waitTime = waitval->u.intValue * level.framerate;
-    }
-    else
-    {
+    double seconds;
+    if (waitval->type == VAR_FLOAT) seconds = waitval->u.floatValue;
+    else if (waitval->type == VAR_INTEGER) seconds = waitval->u.intValue;
+    else {
         gScrVarPub.error_index = 2;
         Scr_Error(va("type %s is not a float", var_typename[waitval->type]));
-        waitTime = 1;
+        return 1;
     }
-    return waitTime;
+    if (!isfinite(seconds) || seconds < 0) {
+        Scr_Error("wait must be finite and non-negative");
+        return 1;
+    }
+    // Keep stock rounding at 20 Hz. Higher rates retain fractional ticks across a timed chain.
+    if (level.framerate == 20) {
+        double ticks = seconds * 20.0;
+        if (ticks >= 0xfffffe) return 0xffffff;
+        int rounded = f2rint((float)ticks);
+        return rounded || seconds == 0 ? rounded : 1;
+    }
+    unsigned int root = GetStartLocalId(gFs.localId);
+    assert(root < sizeof(waitPhases) / sizeof(waitPhases[0]));
+    return Tickrate_Wait(&waitPhases[root], seconds, 1000 / level.framerate, gScrVarPub.time,
+                         Scr_GetThreadPriorWakeTime(root));
 }
 
 

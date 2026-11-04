@@ -125,7 +125,7 @@ __cdecl void SV_WriteSnapshotToClient(client_t* client, msg_t* msg){
     snapInfo.fromBaseline = 0;
     snapInfo.archived = 0;
 
-    frame = &client->frames[client->netchan.outgoingSequence & PACKET_MASK];
+    frame = SV_ClientSnapshot(client, client->netchan.outgoingSequence);
     frame->var_03 = svsHeader.time;
 
     if(client->deltaMessage <= 0 ||  client->state != CS_ACTIVE) {
@@ -133,7 +133,10 @@ __cdecl void SV_WriteSnapshotToClient(client_t* client, msg_t* msg){
         lastframe = 0;
         var_x = 0;
 
-    } else if(client->netchan.outgoingSequence - client->deltaMessage >= PACKET_BACKUP - 3) {
+    } else if(!Tickrate_CanDelta(client->netchan.outgoingSequence - client->deltaMessage, SV_ClientDeltaCapacity(client)) ||
+              !SV_ClientSnapshot(client, client->deltaMessage)->var_03) {
+        // A fast restart clears history, but an in-flight command can restore the old ack.
+        // Only slots that actually contain a snapshot have a nonzero server timestamp.
         Com_DPrintf(CON_CHANNEL_SERVER,"%s: Delta request from out of date packet.\n", client->name);
         oldframe = NULL;
         lastframe = 0;
@@ -155,7 +158,7 @@ __cdecl void SV_WriteSnapshotToClient(client_t* client, msg_t* msg){
 
 
     } else {
-        oldframe = &client->frames[client->deltaMessage & PACKET_MASK];
+        oldframe = SV_ClientSnapshot(client, client->deltaMessage);
         lastframe = client->netchan.outgoingSequence - client->deltaMessage;
         var_x = oldframe->var_03;
         client->demoDeltaFrameCount--;
@@ -474,13 +477,14 @@ __cdecl void SV_SendMessageToClient( msg_t *msg, client_t *client ) {
 	}
 
 	// record information about the message
+	clientSnapshot_t *frame = SV_ClientSnapshot(client, client->netchan.outgoingSequence);
 #ifdef SV_SEND_HUFFMAN
-	client->frames[client->netchan.outgoingSequence & PACKET_MASK].messageSize = len;
+	frame->messageSize = len;
 #else
-	client->frames[client->netchan.outgoingSequence & PACKET_MASK].messageSize = msg->cursize;
+	frame->messageSize = msg->cursize;
 #endif
-	client->frames[client->netchan.outgoingSequence & PACKET_MASK].messageSent = Sys_Milliseconds();
-	client->frames[client->netchan.outgoingSequence & PACKET_MASK].messageAcked = 0xFFFFFFFF;
+	frame->messageSent = Sys_Milliseconds();
+	frame->messageAcked = 0xFFFFFFFF;
 
 	// send the datagram
 #ifdef SV_SEND_HUFFMAN
@@ -494,9 +498,6 @@ __cdecl void SV_SendMessageToClient( msg_t *msg, client_t *client ) {
 	// TTimo - show_bug.cgi?id=491
 	// added sv_lanForceRate check
 
-	if(client->state == CS_ACTIVE && client->deltaMessage >= 0 && client->netchan.outgoingSequence - client->deltaMessage > 28){
-		client->nextSnapshotTime = svs.time + 3000 + client->snapshotMsec;
-	}
 
 	if ( client->netchan.remoteAddress.type == NA_LOOPBACK || Sys_IsLANAddress( &client->netchan.remoteAddress )) {
 		client->nextSnapshotTime = svs.time - 1;
@@ -836,6 +837,21 @@ static void SV_AddEntitiesVisibleFromPoint( float *origin, int clientNum, snapsh
 	}
 }
 
+/* Operator diagnostics may decode into the normal cache; this is never called per frame. */
+int SV_ArchiveOldestMsec(void)
+{
+    int first = svs.nextArchivedSnapshotFrames - NUM_ARCHIVED_FRAMES;
+    if (first < 0) first = 0;
+    for (; first < svs.nextArchivedSnapshotFrames; ++first) {
+        archivedSnapshot_t *stored = &svs.archivedSnapshotFrames[first % NUM_ARCHIVED_FRAMES];
+        if (!stored->size || !Tickrate_ArchiveValid(stored->start, svs.nextArchivedSnapshotBuffer, ARCHIVEDSSBUF_SIZE))
+            continue;
+        cachedSnapshot_t *frame = SV_GetCachedSnapshotInternal(first, 0, false);
+        if (frame) return svs.time - frame->time;
+    }
+    return 0;
+}
+
 static cachedSnapshot_t *SV_GetCachedSnapshot(int *pArchiveTime)
 {
   int frame;
@@ -908,7 +924,7 @@ static void SV_BuildClientSnapshot( client_t *client ) {
 	client_t					*snapClient;
 
 	// this is the frame we are creating
-	frame = &client->frames[ client->netchan.outgoingSequence & PACKET_MASK ];
+	frame = SV_ClientSnapshot(client, client->netchan.outgoingSequence);
 
 	// clear everything in this snapshot
 	entityNumbers.numSnapshotEntities = 0;
@@ -1203,6 +1219,18 @@ void SV_SendClientMessages( void ) {
 		return;
 	}
 
+	/* Rebase the byte cursor before signed overflow without expiring readable history.
+	 * shift <= cursor - ring size, so every frame still in the ring keeps a non-negative start;
+	 * expired frames go negative and stay rejected by Tickrate_ArchiveValid. Cached decodes are
+	 * keyed by logical frame index, not byte start, so they survive. */
+	int shift = Tickrate_ArchiveShift(svs.nextArchivedSnapshotBuffer, ARCHIVEDSSBUF_SIZE);
+	if (shift) {
+		int i;
+		for (i = 0; i < NUM_ARCHIVED_FRAMES; ++i)
+			svs.archivedSnapshotFrames[i].start = svs.archivedSnapshotFrames[i].start >= shift ?
+				svs.archivedSnapshotFrames[i].start - shift : -1;
+		svs.nextArchivedSnapshotBuffer -= shift;
+	}
 	int maxArchivedSnapshotFrames = sizeof(svs.archivedSnapshotFrames) / sizeof(svs.archivedSnapshotFrames[0]);
 
 	svs.archivedSnapshotFrames[svs.nextArchivedSnapshotFrames % maxArchivedSnapshotFrames].start = svs.nextArchivedSnapshotBuffer;
@@ -1828,19 +1856,7 @@ skipDelta:
 
 bool SV_FrameIsStillInArchivedSnapshotBuffer(const int frameStart)
 {
-  int bufferStart;
-
-  assert(frameStart >= 0);
-  bufferStart = svs.nextArchivedSnapshotBuffer - ARCHIVEDSSBUF_SIZE;
-  if ( svs.nextArchivedSnapshotBuffer - ARCHIVEDSSBUF_SIZE >= 0 )
-  {
-    return frameStart >= bufferStart && frameStart < svs.nextArchivedSnapshotBuffer;
-  }
-  if ( frameStart >= svs.nextArchivedSnapshotBuffer )
-  {
-    return frameStart >= bufferStart + 0x28000000;
-  }
-  return true;
+  return Tickrate_ArchiveValid(frameStart, svs.nextArchivedSnapshotBuffer, ARCHIVEDSSBUF_SIZE);
 }
 
 

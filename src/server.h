@@ -36,6 +36,7 @@
 #include "g_public.h"
 #include "sys_cod4defs.h"
 #include "cvar.h"
+#include "tickrate.h"
 #include "net_game_conf.h"
 
 #include "net_reliabletransport.h"
@@ -48,7 +49,7 @@ extern struct cm_world_t cm_world;
 
 #define MAX_VOICEPACKETS 40
 
-#define ARCHIVEDSSBUF_SIZE 0x1000000
+#define ARCHIVEDSSBUF_SIZE 0x8000000
 
 typedef struct{
 	netreliablemsg_t *netstate;
@@ -296,14 +297,15 @@ typedef struct{
 
 #define MAX_SNAPSHOT_ENTITIES	1024
 #define MAX_CONFIGDATACACHE 4096
-#define NUM_ARCHIVED_FRAMES 1200
+#define NUM_ARCHIVED_FRAMES ((TICKRATE_ARCHIVE_SECONDS + TICKRATE_ARCHIVE_DECODE_SECONDS) * TICKRATE_MAX_FPS)
 
-typedef struct {//0x8c51780
+/* Internal server storage; unlike client_t, this layout is not a plugin ABI. */
+typedef struct {
 
 	cachedSnapshot_t cachedSnapshotFrames[512];
 	archivedEntity_t cachedSnapshotEntities[16384];
 
-	qboolean	initialized;				//0x90b4f80 sv_init has completed
+	qboolean	initialized;				// sv_init has completed
 
 	int		time;					// will be strictly increasing across level changes
 	int		timeResidual;				// Used for remainder of the integer division of frametime / 1000 and prodive exact timing for svs.time
@@ -314,20 +316,20 @@ typedef struct {//0x8c51780
 
 
 
-	int		numSnapshotEntities;		//0xba0de8c sv_maxclients->integer*PACKET_BACKUP*MAX_PACKET_ENTITIES
+	int		numSnapshotEntities;		// allocated snapshot entity count
 	int		numSnapshotClients;
-	int		nextSnapshotEntities;		//0xba0de94 next snapshotEntities to use
+	int		nextSnapshotEntities;		// next snapshotEntities index
 	int		nextSnapshotClients;
 
-	entityState_t snapshotEntities[0x2A000];
-	clientState_t snapshotClients[0x20000];
+	entityState_t *snapshotEntities;	// allocated by SV_InitSnapshotStorage
+	clientState_t *snapshotClients;
 
-	int nextArchivedSnapshotFrames; //0xee95e9c
+	int nextArchivedSnapshotFrames;
 
 	archivedSnapshot_t archivedSnapshotFrames[NUM_ARCHIVED_FRAMES];
 	byte archivedSnapshotBuffer[ARCHIVEDSSBUF_SIZE];
 	int nextArchivedSnapshotBuffer;
-	int nextCachedSnapshotEntities; //0x10e98420
+	int nextCachedSnapshotEntities;
 	int nextCachedSnapshotClients;
 	int nextCachedSnapshotFrames;
 	cachedClient_t cachedSnapshotClients[4096];
@@ -360,7 +362,7 @@ typedef struct {//0x8c51780
 	msg_t			migrationMsg;
 	int			migrationMsgCrc;
 	byte			migrationPacketReceivedBits[32];
-}serverStatic_t; //Size: 0xb227580
+}serverStatic_t;
 
 
 typedef struct {
@@ -482,6 +484,27 @@ typedef struct{//13F18F80
 extern server_t sv;
 extern serverStatic_t svs;
 extern svsHeader_t svsHeader;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+void SV_RegisterTickrate(void);
+void SV_ConfigureTickrate(void);
+int SV_FrameMsec(void);
+int SV_SnapshotSlots(void);
+int SV_ClientDeltaCapacity(const client_t *client);
+void SV_UpdateClientDeltaCapacity(client_t *client);
+qboolean SV_TickrateClientCompatible(const char *userinfo);
+void SV_InitSnapshotStorage(void);
+void SV_FreeSnapshotStorage(void);
+int SV_ArchiveOldestMsec(void);
+clientSnapshot_t *SV_ClientSnapshot(client_t *client, int sequence);
+void SV_ResetClientSnapshots(client_t *client);
+extern cvar_t *sv_minSnaps;
+extern cvar_t *sv_minRate;
+#ifdef __cplusplus
+}
+#endif
 
 
 

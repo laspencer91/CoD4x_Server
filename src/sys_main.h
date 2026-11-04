@@ -48,6 +48,9 @@ unsigned long long Sys_MillisecondsLong( void );
 unsigned long long Sys_MicrosecondsLong( void );
 
 void Sys_TimerInit( void );
+#ifdef _WIN32
+qboolean Sys_EnableHighResolutionTimer(void);
+#endif
 unsigned long long Sys_Microseconds( void );
 int Sys_Seconds( void );
 void Sys_Quit( void );

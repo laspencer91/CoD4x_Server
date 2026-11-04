@@ -113,7 +113,7 @@ then buffer them and make sure they get sent in correct order
 */
 qboolean SV_Netchan_Transmit( client_t *client, byte *data, int cursize) {   //int length, const byte *data ) {
 	qboolean nt_ret;
-	int i;
+	clientSnapshot_t *frame;
 
 //	SV_DumpCommands(client, (byte*)data, cursize, qfalse);
 
@@ -125,12 +125,12 @@ qboolean SV_Netchan_Transmit( client_t *client, byte *data, int cursize) {   //i
 		return nt_ret;
 	}
 
-	i = client->netchan.outgoingSequence & 31;
+	frame = SV_ClientSnapshot(client, client->netchan.outgoingSequence);
 
-	Com_Memset(&client->frames[i], 0, sizeof(clientSnapshot_t));
+	Com_Memset(frame, 0, sizeof(clientSnapshot_t));
 
-	client->frames[i].first_entity = svs.nextSnapshotEntities;
-	client->frames[i].first_client = svs.nextSnapshotClients;
+	frame->first_entity = svs.nextSnapshotEntities;
+	frame->first_client = svs.nextSnapshotClients;
 
 	return nt_ret;
 }
@@ -148,19 +148,19 @@ then buffer them and make sure they get sent in correct order
 ================
 */
 __cdecl qboolean SV_Netchan_TransmitNextFragment( client_t *client ) {   //int length, const byte *data ) {
-	int i;
+	clientSnapshot_t *frame;
 
 	Netchan_TransmitNextFragment( &client->netchan );
 
 	if(client->netchan.unsentFragments)
 		return qtrue; //Return true if we have still unsent fragments
 	
-	i = client->netchan.outgoingSequence & 31;
+	frame = SV_ClientSnapshot(client, client->netchan.outgoingSequence);
 
-	Com_Memset(&client->frames[i], 0, sizeof(clientSnapshot_t));
+	Com_Memset(frame, 0, sizeof(clientSnapshot_t));
 
-	client->frames[i].first_entity = svs.nextSnapshotEntities;
-	client->frames[i].first_client = svs.nextSnapshotClients;
+	frame->first_entity = svs.nextSnapshotEntities;
+	frame->first_client = svs.nextSnapshotClients;
 
 	return qfalse; //No more unsent fragments, this was the last fragment
 }

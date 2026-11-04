@@ -151,15 +151,24 @@ void G_CloseLogFile()
 
 
 float missile_frametime;
+int g_frame_msec = 50;
+float g_frame_rate = 20.0f;
+static int missileLast[MAX_GENTITIES];
+static int missileUseCount[MAX_GENTITIES];
 extern int helicopter_thinktime;
 extern float vehicle_frametime;
 
 void G_InitSomeVariables(int framerate)
 {
     level.framerate = framerate;
+    g_frame_msec = 1000 / framerate;
+    g_frame_rate = (float)framerate;
+    memset(missileLast, 0, sizeof(missileLast));
+    memset(missileUseCount, 0, sizeof(missileUseCount));
     missile_frametime = 1.0f / (float)level.framerate;
-    helicopter_thinktime = 1000 / level.framerate;
-    vehicle_frametime = 1.0f / (float)level.framerate;
+    // Vehicle and helicopter think handlers retain their independent 50 ms schedule.
+    helicopter_thinktime = 50;
+    vehicle_frametime = 0.05f;
 }
 
 
@@ -179,6 +188,34 @@ void __cdecl G_RunThink(struct gentity_s *ent)
     }
     think(ent);
   }
+}
+
+// Preserve the stock free-missile collision cadence while the world advances faster.
+// Linked missiles still follow their parent every frame. Reused entity slots have a new useCount.
+static void G_RunMissileFrame(gentity_t *ent)
+{
+    if (g_frame_msec == 50 || ent->tagInfo) {
+        G_RunMissile(ent);
+        return;
+    }
+    int index = ent - level.gentities;
+    int &last = missileLast[index];
+    if (!last || missileUseCount[index] != ent->useCount) {
+        int thrown = ent->s.lerp.pos.trTime;
+        last = thrown > 0 && thrown <= level.time && level.time - thrown < 50 ? thrown : level.time - 50;
+        missileUseCount[index] = ent->useCount;
+    }
+    if (level.time - last < 50) return;
+    int previous = level.previousTime, duration = level.frameTime;
+    float seconds = missile_frametime;
+    level.previousTime = last;
+    level.frameTime = level.time - last;
+    missile_frametime = level.frameTime * 0.001f;
+    G_RunMissile(ent);
+    missile_frametime = seconds;
+    level.previousTime = previous;
+    level.frameTime = duration;
+    last = level.time;
 }
 
 void G_RunFrameForEntity(struct gentity_s *ent)
@@ -230,7 +267,7 @@ void G_RunFrameForEntity(struct gentity_s *ent)
   switch ( ent->s.eType )
   {
     case ET_MISSILE:
-      G_RunMissile(ent);
+      G_RunMissileFrame(ent);
       return;
     case ET_ITEM:
       if ( ent->tagInfo )
