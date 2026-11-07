@@ -95,21 +95,12 @@ int main(int argc, char **argv)
     optionVar.integer = 0; failure[0] = 0;
     SV_ConfigureRecoil();
     assert(!failure[0] && locked && (optionVar.flags & CVAR_ROM));
-    assert(SV_RecoilClientCompatible("", qtrue));
-    /* Exercise future admission/ack policy without advertising runtime support. */
+    assert(SV_RecoilClientCompatible(""));
+    /* Model 1 admission: capability only. */
     assert(Recoil_Decode("1:1:ak74u,2500,3,7500", &active));
-    Recoil_Fingerprint("1:1:ak74u,2500,3,7500", activeFingerprint);
-    assert(!SV_RecoilClientCompatible("", qfalse));
-    assert(!SV_RecoilClientCompatible("\\cl_recoilProtocol\\1\\cl_recoilModels\\1", qfalse));
-    assert(SV_RecoilClientCompatible("\\cl_recoilProtocol\\1\\cl_recoilModels\\3", qfalse));
-    assert(!SV_RecoilClientCompatible("\\cl_recoilProtocol\\1\\cl_recoilModels\\3", qtrue));
-    {
-        char info[128];
-        snprintf(info, sizeof(info), "\\cl_recoilProtocol\\1\\cl_recoilModels\\3\\cl_recoilAck\\%s", activeFingerprint);
-        assert(SV_RecoilClientCompatible(info, qtrue));
-        info[strlen(info) - 1] ^= 1;
-        assert(!SV_RecoilClientCompatible(info, qtrue));
-    }
-    puts("server recoil default, activation refusal, capability and acknowledgement checks passed");
+    assert(!SV_RecoilClientCompatible(""));
+    assert(!SV_RecoilClientCompatible("\\cl_recoilProtocol\\1\\cl_recoilModels\\1"));
+    assert(SV_RecoilClientCompatible("\\cl_recoilProtocol\\1\\cl_recoilModels\\3"));
+    puts("server recoil default, activation, refusal and capability checks passed");
     return 0;
 }

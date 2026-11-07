@@ -7,8 +7,10 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Single source for every recoil limit and model ID; tools/sync-recoil.py generates the Python copy. */
 enum { RECOIL_PROTOCOL = 1, RECOIL_SCALE = 10000, RECOIL_MAX_WEAPONS = 16,
-       RECOIL_WIRE_SIZE = 768, RECOIL_NATIVE = 0, RECOIL_CONTINUOUS = 1 };
+       RECOIL_WIRE_SIZE = 768, RECOIL_WEAPON_NAME = 32, RECOIL_MAX_FULL_SHOT = 32,
+       RECOIL_MAX_RECOVERY = 100000, RECOIL_NATIVE = 0, RECOIL_CONTINUOUS = 1 };
 #define RECOIL_NATIVE_WIRE "1:0" /* Permanent native contract, including on newer engines. */
 
 typedef struct { unsigned id; const char *name; unsigned integrated; } recoil_model_t;
@@ -18,7 +20,7 @@ typedef struct { unsigned id; const char *name; unsigned integrated; } recoil_mo
  * that hook is installed. */
 static const recoil_model_t recoil_models[] = {{RECOIL_NATIVE, "native", 1}, {RECOIL_CONTINUOUS, "continuous", 1}};
 typedef struct {
-    char weapon[32];
+    char weapon[RECOIL_WEAPON_NAME];
     unsigned opening, full_shot, recovery;
 } recoil_weapon_t;
 typedef struct recoil_contract_s {
@@ -51,7 +53,7 @@ static inline const recoil_model_t *Recoil_Model(unsigned id)
 static inline int Recoil_ValidWeapon(const recoil_weapon_t *p)
 {
     return p->opening > 0 && p->opening <= RECOIL_SCALE && p->full_shot >= 1 &&
-        p->full_shot <= 32 && p->recovery <= 100000 &&
+        p->full_shot <= RECOIL_MAX_FULL_SHOT && p->recovery <= RECOIL_MAX_RECOVERY &&
         (p->full_shot != 1 || p->opening == RECOIL_SCALE);
 }
 
@@ -106,14 +108,6 @@ static inline int Recoil_Decode(const char *text, recoil_contract_t *out)
     }
     *out = c;
     return 1;
-}
-
-/* A compact acknowledgement of canonical bytes, not a client integrity proof. */
-static inline void Recoil_Fingerprint(const char *wire, char out[17])
-{
-    uint64_t hash = UINT64_C(14695981039346656037);
-    while (*wire) { hash ^= (unsigned char)*wire++; hash *= UINT64_C(1099511628211); }
-    snprintf(out, 17, "%08x%08x", (unsigned)(hash >> 32), (unsigned)hash);
 }
 
 static inline int Recoil_Compatible(const recoil_contract_t *c, unsigned protocol, unsigned mask)

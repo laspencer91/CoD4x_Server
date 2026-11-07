@@ -6,7 +6,6 @@
 
 static cvar_t *requestedModel, *publishedContract;
 static recoil_contract_t active;
-static char activeFingerprint[17];
 static qboolean locked;
 
 const recoil_contract_t *SV_RecoilContract(void) { return &active; }
@@ -15,9 +14,9 @@ static void SV_RecoilStatus_f(void)
 {
     unsigned i;
     Com_Printf(CON_CHANNEL_SERVER,
-        "recoil_status: requested=%d active=%u protocol=%d runtime_models=%u fingerprint=%s locked=%d\n",
+        "recoil_status: requested=%d active=%u protocol=%d runtime_models=%u contract=%s locked=%d\n",
         requestedModel->integer, active.model, RECOIL_PROTOCOL, Recoil_RuntimeModels(),
-        activeFingerprint, locked);
+        publishedContract->string, locked);
     for (i = 0; i < sizeof(recoil_models) / sizeof(*recoil_models); ++i)
         Com_Printf(CON_CHANNEL_SERVER, "  model %u %s: %s\n", recoil_models[i].id,
             recoil_models[i].name, recoil_models[i].integrated ?
@@ -31,7 +30,6 @@ void SV_RegisterRecoil(void)
     publishedContract = Cvar_RegisterString("sv_recoilContract", RECOIL_NATIVE_WIRE,
         CVAR_ROM | CVAR_SYSTEMINFO, "Atomic effective recoil model and weapon profiles");
     Recoil_Decode(RECOIL_NATIVE_WIRE, &active);
-    Recoil_Fingerprint(RECOIL_NATIVE_WIRE, activeFingerprint);
     Cmd_AddCommand("recoil_status", SV_RecoilStatus_f);
 }
 
@@ -82,14 +80,13 @@ void SV_ConfigureRecoil(void)
         return;
     }
     active = candidate;
-    Recoil_Fingerprint(wire, activeFingerprint);
     Cvar_SetString(publishedContract, wire);
     Cvar_AddFlags(requestedModel, CVAR_ROM);
     locked = qtrue;
     SV_RecoilStatus_f();
 }
 
-qboolean SV_RecoilClientCompatible(const char *userinfo, qboolean requireAck)
+qboolean SV_RecoilClientCompatible(const char *userinfo)
 {
     const char *text;
     unsigned protocol, models;
@@ -97,6 +94,5 @@ qboolean SV_RecoilClientCompatible(const char *userinfo, qboolean requireAck)
     text = Info_ValueForKey(userinfo, "cl_recoilProtocol");
     if (!Recoil_Number(&text, &protocol) || *text) return qfalse;
     text = Info_ValueForKey(userinfo, "cl_recoilModels");
-    if (!Recoil_Number(&text, &models) || *text || !Recoil_Compatible(&active, protocol, models)) return qfalse;
-    return !requireAck || !strcmp(Info_ValueForKey(userinfo, "cl_recoilAck"), activeFingerprint);
+    return Recoil_Number(&text, &models) && !*text && Recoil_Compatible(&active, protocol, models);
 }
