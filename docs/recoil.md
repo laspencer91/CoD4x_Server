@@ -1,27 +1,32 @@
-# Recoil model foundation
+# Recoil models
 
-`recoil_model` is a server-owned integer, default 0/native. Set it before loading
-the first map. A successful selection locks until the server process restarts.
-`recoil_status` lists model IDs, effective contract fingerprint and integrated support.
+`recoil_model` is a server-owned integer, default 0 (native). Set it before the first map. The first
+successful selection locks until the process restarts. `recoil_status` lists the model IDs and the
+published contract.
 
-Only native gameplay is integrated. Model 1/continuous is reserved and has a tested
-shared kernel/profile, but selecting it refuses the map load with an explicit error.
-Accepted-shot state, prediction, snapshot corrections and event-scale integration
-remain required before enabling its runtime bit. No player-state layout or native
-recoil code is patched by this foundation. Legacy clients remain compatible with 0.
+A non-native model (1, continuous) is server-authoritative:
 
-The mod supplies `recoil/model_<id>.profile` as server-only loose files and server-only
-`recoil-native.cfg` / `recoil-continuous.cfg` beside the IWD. Values are published as one
-ROM/systeminfo `sv_recoilContract`; clients do not select their effective settings.
-Non-native admission requires protocol/model support and a matching acknowledgement
-after gamestate. Claims in userinfo are not verified code integrity.
+- **Per-command fold.** `SV_ClientThink` folds the server's own simulation of each client's view kick
+  into the usercmd that `ClientThink` executes (`cl->lastUsercmd`). The wire values, `cmds[]` and
+  `PLUGINS_ONCLIENTMOVECOMMAND` keep the client's aim-only angles. Anti-cheat plugins that read the
+  plugin event therefore see aim without kick. The player state and demos see the folded angles.
+- **Shots.** `G_PlayerEvent`'s recoil call is retargeted to `SV_Recoil_FireRecoil`
+  (`asmsource/_g_active_mp.asm`). It runs the native function, then advances the simulation for the
+  shot and scales the native gun kick, which moves this client's bullets.
+- **Corrections.** `SV_EndClientSnapshot` sends `svc_recoil` (the state after the client's last
+  command) while it moves or changes, plus a 500 ms heartbeat. Only clients admitted with
+  `cl_recoilProtocol` 2 receive it.
+- **Not simulated:** bots, followers (`otherFlags`), and `g_synchronousClients` mode stay native.
 
-`src/recoil/model.h` is generated from the client repository's canonical file. Run
-`python tools/sync-recoil.py --check` in that repository when building a matched pair.
-Do not edit this mirror. Keep model IDs and wire semantics stable; a new algorithm
-needs a new model ID and native implementation, not just a profile file.
+The mod supplies `recoil/model_<id>.profile` as a server-only loose file.
 
-The existing makefile discovers `src/sv_recoil.c`. Test its actual server policy with
-`make test-recoil`. It links the real info-string helpers (with host services supplied
-by the fixture), including a multi-weapon round trip. This fixture supplies host services;
-it does not establish a native multiplayer session.
+`src/recoil/*.h` is generated from the client repository (`CoD4x_Client_pub/tools/sync-recoil.py`). Do
+not edit this mirror. Design, evidence and how to add a model: `CoD4x_Client_pub/docs/recoil-models.md`.
+
+Tests:
+- `make test-recoil` checks the contract, admission and policy glue.
+- The client's `tests/test_recoil.c` checks the shared simulation. Build it with this server's flags
+  to check that both builds agree.
+
+The Windows build (`mingw32-make`) links `bin/cod4x18_dedrun.exe`. Only the plugin export step needs
+`pexports`.

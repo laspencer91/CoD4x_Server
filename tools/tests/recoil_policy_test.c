@@ -69,7 +69,7 @@ int main(int argc, char **argv)
     profile = "1:1:ak74u,2500,1,7500";
     SV_ConfigureRecoil();
     assert(strstr(failure, "Invalid profile") && !locked);
-    /* Model 1 is integrated: the profile is published without its line ending and locks. */
+    /* Model 1 is server-simulated: the profile is published without its line ending and locks. */
     profile = "1:1:ak74u,2500,3,7500\r\n"; failure[0] = 0;
     SV_ConfigureRecoil();
     assert(!failure[0] && locked && !strcmp(published, "1:1:ak74u,2500,3,7500") && (optionVar.flags & CVAR_ROM));
@@ -96,11 +96,12 @@ int main(int argc, char **argv)
     SV_ConfigureRecoil();
     assert(!failure[0] && locked && (optionVar.flags & CVAR_ROM));
     assert(SV_RecoilClientCompatible(""));
-    /* Model 1 admission: capability only. */
+    /* Model 1 admission: capability only; protocol 1 builds applied the model client-side and would double it. */
     assert(Recoil_Decode("1:1:ak74u,2500,3,7500", &active));
     assert(!SV_RecoilClientCompatible(""));
-    assert(!SV_RecoilClientCompatible("\\cl_recoilProtocol\\1\\cl_recoilModels\\1"));
-    assert(SV_RecoilClientCompatible("\\cl_recoilProtocol\\1\\cl_recoilModels\\3"));
+    assert(!SV_RecoilClientCompatible("\\cl_recoilProtocol\\2\\cl_recoilModels\\1"));
+    assert(!SV_RecoilClientCompatible("\\cl_recoilProtocol\\1\\cl_recoilModels\\3"));
+    assert(SV_RecoilClientCompatible("\\cl_recoilProtocol\\2\\cl_recoilModels\\3"));
     puts("server recoil default, activation, refusal and capability checks passed");
     return 0;
 }

@@ -579,6 +579,9 @@ void SV_EndClientSnapshot(client_t *client, msg_t *msg)
 	if ( client->state != CS_ZOMBIE )
 		SV_WriteDownloadToClient( client );
 
+	if ( client->state == CS_ACTIVE )
+		SV_RecoilWriteCorrection( client, msg );
+
 	MSG_WriteByte(msg, svc_EOF);
 
 	if ( msg->overflowed == qtrue)

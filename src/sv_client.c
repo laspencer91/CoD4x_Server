@@ -3055,8 +3055,10 @@ void __cdecl SV_ClientThink(client_t *cl, struct usercmd_s *cmd)
     memcpy(&cl->lastUsercmd, cmd, sizeof(cl->lastUsercmd));
     if ( cl->state == CS_ACTIVE )
     {
+      SV_RecoilBeginCommand(cl);
       G_SetLastServerTime(cl - svs.clients, cmd->serverTime);
       ClientThink(cl - svs.clients);
+      SV_RecoilEndCommand(cl);
 
 /*
       if ( GetCurrentThreadId() == (_DWORD)g_DXDeviceThread && 0 == dword_A8402BC )

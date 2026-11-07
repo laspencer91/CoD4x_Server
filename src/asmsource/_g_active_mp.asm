@@ -16,6 +16,7 @@
 	extern scr_const
 	extern Scr_Notify
 	extern BG_WeaponFireRecoil
+	extern SV_Recoil_FireRecoil
 	extern crandom
 	extern Vec2Normalize
 	extern g_gravity
@@ -353,7 +354,7 @@ G_PlayerEvent_20:
 	lea eax, [edx+0x3158]
 	mov [esp+0x4], eax
 	mov [esp], edx
-	call BG_WeaponFireRecoil
+	call SV_Recoil_FireRecoil	; sv_recoil.c: native call, then server-authoritative recoil
 	leave
 	ret
 
