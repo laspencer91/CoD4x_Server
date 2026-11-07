@@ -69,9 +69,11 @@ int main(int argc, char **argv)
     profile = "1:1:ak74u,2500,1,7500";
     SV_ConfigureRecoil();
     assert(strstr(failure, "Invalid profile") && !locked);
-    profile = "1:1:ak74u,2500,3,7500\r\n";
+    /* Model 1 is integrated: the profile is published without its line ending and locks. */
+    profile = "1:1:ak74u,2500,3,7500\r\n"; failure[0] = 0;
     SV_ConfigureRecoil();
-    assert(strstr(failure, "not integrated") && !locked && !strcmp(published, "1:0"));
+    assert(!failure[0] && locked && !strcmp(published, "1:1:ak74u,2500,3,7500") && (optionVar.flags & CVAR_ROM));
+    locked = qfalse; optionVar.flags &= ~CVAR_ROM;
     {
         FILE *corpus;
         char line[1024];
@@ -82,9 +84,10 @@ int main(int argc, char **argv)
             size_t length = strlen(line);
             while (length && (line[length - 1] == '\r' || line[length - 1] == '\n')) line[--length] = 0;
             if (line[0] == '1' && strlen(line + 2) == RECOIL_WIRE_SIZE - 1) {
-                strcat(line, "\r\n"); profile = line + 2;
+                strcat(line, "\r\n"); profile = line + 2; failure[0] = 0;
                 SV_ConfigureRecoil();
-                assert(strstr(failure, "not integrated") && !locked); ++found;
+                assert(!failure[0] && locked && strlen(published) == RECOIL_WIRE_SIZE - 1); ++found;
+                locked = qfalse; optionVar.flags &= ~CVAR_ROM;
             }
         }
         fclose(corpus); assert(found == 1);

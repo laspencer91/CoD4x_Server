@@ -12,8 +12,11 @@ enum { RECOIL_PROTOCOL = 1, RECOIL_SCALE = 10000, RECOIL_MAX_WEAPONS = 16,
 #define RECOIL_NATIVE_WIRE "1:0" /* Permanent native contract, including on newer engines. */
 
 typedef struct { unsigned id; const char *name; unsigned integrated; } recoil_model_t;
-/* Set integrated only after firing AND prediction/snapshot integration are verified. */
-static const recoil_model_t recoil_models[] = {{RECOIL_NATIVE, "native", 1}, {RECOIL_CONTINUOUS, "continuous", 0}};
+/* Set integrated only once the client applies the model to every shot. View kick moves only the
+ * client's own aim (the server computes and discards it), so per-shot state lives on the client:
+ * cl_recoil.c hooks the cgame's BG_WeaponFireRecoil call. A client advertises a model only while
+ * that hook is installed. */
+static const recoil_model_t recoil_models[] = {{RECOIL_NATIVE, "native", 1}, {RECOIL_CONTINUOUS, "continuous", 1}};
 typedef struct {
     char weapon[32];
     unsigned opening, full_shot, recovery;
@@ -22,7 +25,7 @@ typedef struct recoil_contract_s {
     unsigned version, model, count;
     recoil_weapon_t weapons[RECOIL_MAX_WEAPONS];
 } recoil_contract_t;
-/* State must be restored with prediction before replay; it is not a global cache. */
+/* Per player and weapon; reset when the weapon changes or time goes backwards. */
 typedef struct {
     uint64_t heat;
     uint32_t time, sequence;
