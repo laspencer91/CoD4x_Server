@@ -1,0 +1,26 @@
+1	1:0
+1	1:1:ak74u,2500,3,7500
+1	1:1:ak74u,2500,3,7500/mp5,5000,4,5000
+1	1:1:a,10000,1,0
+0	2:0
+0	1:2:a,2500,3,7500
+0	1:00
+0	1:0:a,2500,3,7500
+0	1:1:
+0	1:1:a,2500,1,7500
+0	1:1:a,0,3,7500
+0	1:1:a,10001,3,7500
+0	1:1:a,2500,33,7500
+0	1:1:a,2500,3,100001
+0	1:1:a,02500,3,7500
+0	1:1:a,42949672960,3,7500
+0	1:1:../a,2500,3,7500
+0	1:1:a,2500,3,7500/a,2500,3,7500
+0	1:1:a,2500,3,7500/
+0	1:1:a,2500,3,7500;b,2500,3,7500
+0	1:1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,2500,3,7500
+0	1:1:a,-1,3,7500
+0	1:1:a,2500,0,7500
+0	1:1: a,2500,3,7500
+0	1:1:w0,2500,3,7500/w1,2500,3,7500/w2,2500,3,7500/w3,2500,3,7500/w4,2500,3,7500/w5,2500,3,7500/w6,2500,3,7500/w7,2500,3,7500/w8,2500,3,7500/w9,2500,3,7500/w10,2500,3,7500/w11,2500,3,7500/w12,2500,3,7500/w13,2500,3,7500/w14,2500,3,7500/w15,2500,3,7500/w16,2500,3,7500
+1	1:1:w00xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w01xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w02xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w03xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w04xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w05xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w06xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w07xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w08xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w09xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w10xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w11xxxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w12xxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w13xxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w14xxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000/w15xxxxxxxxxxxxxxxxxxxxxxxxxxx,10000,32,100000

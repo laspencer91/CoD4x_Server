@@ -169,6 +169,10 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 		NET_OutOfBandPrint(NS_SERVER, from, "error\nThis server requires the matching 100 Hz CoD4x client.\n");
 		return;
 	}
+	if (from->type != NA_BOT && !SV_RecoilClientCompatible(userinfo, qfalse)) {
+		NET_OutOfBandPrint(NS_SERVER, from, "error\nThis server requires a client supporting its recoil model.\n");
+		return;
+	}
 
 	version = atoi( Info_ValueForKey( userinfo, "protocol" ));
 
@@ -1170,6 +1174,18 @@ void SV_ClientEnterWorld( client_t *client, usercmd_t *cmd ) {
 	char ssti[128];
 	char psti[128];
 
+	if (client->netchan.remoteAddress.type != NA_BOT) {
+		if (!SV_RecoilClientCompatible(client->userinfo, qfalse)) {
+			SV_DropClient(client, "Recoil capability does not match the server.");
+			return;
+		}
+		if (!SV_RecoilClientCompatible(client->userinfo, qtrue)) {
+			// A reliable userinfo acknowledgement may follow the first movement packet.
+			// Remain primed until it arrives; an old acknowledgement may still be in userinfo.
+			return;
+		}
+	}
+
 	if(client->lockedout)
 	{
 		return;
@@ -1949,6 +1965,11 @@ SV_UpdateUserinfo_f
 static void SV_UpdateUserinfo_f( client_t *cl ) {
 	if (cl->netchan.remoteAddress.type != NA_BOT && !SV_TickrateClientCompatible(SV_Cmd_Argv(1))) {
 		SV_DropClient(cl, "This server requires the matching 100 Hz CoD4x client.");
+		return;
+	}
+	if (cl->netchan.remoteAddress.type != NA_BOT &&
+	    !SV_RecoilClientCompatible(SV_Cmd_Argv(1), cl->state == CS_ACTIVE)) {
+		SV_DropClient(cl, "Recoil capability or profile acknowledgement does not match the server.");
 		return;
 	}
 	Q_strncpyz( cl->userinfo, SV_Cmd_Argv( 1 ), sizeof( cl->userinfo ) );

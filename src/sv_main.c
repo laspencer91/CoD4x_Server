@@ -3123,6 +3123,7 @@ void SV_InitCvarsOnce(void){
     // Stock range kept so an unsupported value reaches SV_ConfigureTickrate's error instead of being clamped silently.
     sv_fps = Cvar_RegisterInt("sv_fps", 20, 1, 250, 0, "World frames per second (20 or 100), chosen on first map; restart process to change");
     SV_RegisterTickrate();
+    SV_RegisterRecoil();
     sv_showAverageBPS = Cvar_RegisterBool("sv_showAverageBPS", qfalse, 0, "Show average bytes per second for net debugging");
     sv_botsPressAttackBtn = Cvar_RegisterBool("sv_botsPressAttackBtn", qtrue, 0, "Allow testclients to press attack button");
     sv_debugRate = Cvar_RegisterBool("sv_debugRate", qfalse, 0, "Enable snapshot rate debugging info");
@@ -3533,6 +3534,7 @@ qboolean SV_FFAPlayerCanBlock(){
 //Few custom added things which should happen if we load a new level or restart a level
 void SV_PreLevelLoad(){
     SV_ConfigureTickrate();
+    SV_ConfigureRecoil();
     Com_UpdateRealtime();
     time_t realtime = Com_GetRealtime();
     char *timestr = ctime(&realtime);

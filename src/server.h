@@ -489,6 +489,11 @@ extern svsHeader_t svsHeader;
 extern "C" {
 #endif
 void SV_RegisterTickrate(void);
+void SV_RegisterRecoil(void);
+void SV_ConfigureRecoil(void);
+qboolean SV_RecoilClientCompatible(const char *userinfo, qboolean requireAck);
+struct recoil_contract_s;
+const struct recoil_contract_s *SV_RecoilContract(void);
 void SV_ConfigureTickrate(void);
 int SV_FrameMsec(void);
 int SV_SnapshotSlots(void);

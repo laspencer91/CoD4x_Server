@@ -1,1 +1,3 @@
 * text=lf
+src/recoil/model.h text eol=lf
+tools/tests/recoil-contracts.tsv text eol=lf

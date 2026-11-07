@@ -149,6 +149,11 @@ ASSETS_OBJ=$(patsubst $(ASSETS_DIR)/%.c,$(OBJ_DIR)/%.o,$(ASSETS_SOURCES))
 all: notify $(EXTERNAL) $(TARGET) $(ADDITIONAL_OBJ)
 	@echo Server done
 
+.PHONY: test-recoil
+test-recoil:
+	$(CC) $(COMMON_FLAGS) -std=gnu11 -O2 -flto -ffunction-sections -fdata-sections tools/tests/recoil_policy_test.c src/qshared.c -Wl,--gc-sections -o $(BIN_DIR)/test_recoil_policy$(BIN_EXT)
+	$(BIN_DIR)/test_recoil_policy$(BIN_EXT) tools/tests/recoil-contracts.tsv
+
 notify:
 	@echo Server start
 
