@@ -3694,6 +3694,12 @@ void __cdecl SV_ReconnectClients(int savepersist)
 }
 
 
+/* A fast restart requested in the frame that loaded the level waits for the next frame (SV_Frame). A script's
+ * map_restart during the load's settle frames lands there, and the script already counts it as pending
+ * (GScr_MapRestart sets the level's restart flag), so dropping it left the level unable to restart: its next
+ * map_restart failed with "map_restart already called". */
+static qboolean sv_deferredFastRestart;
+
 /*
 ================
 SV_MapRestart
@@ -3730,7 +3736,11 @@ void SV_MapRestart( qboolean fastRestart ){
     }
 
     if(com_frameTime == sv.start_frameTime)
+    {
+        Com_DPrintf(CON_CHANNEL_SERVER, "SV_MapRestart: requested while the level loaded; restarting next frame\n");
+        sv_deferredFastRestart = qtrue;
         return;
+    }
 
     SV_PreFastRestart();
 
@@ -4194,6 +4204,11 @@ __optimize3 __regparm1 qboolean SV_Frame( unsigned int usec ) {
     if ( !com_sv_running->boolean ) {
         Sys_SleepUSec(20000);
         return qtrue;
+    }
+
+    if ( sv_deferredFastRestart ) {
+        sv_deferredFastRestart = qfalse;
+        SV_MapRestart( qtrue );     /* defers again while still in the load frame */
     }
 
 
@@ -4771,6 +4786,7 @@ void SV_SpawnServer(const char *mapname)
         Sys_Restart(svs.sysrestartmessage);
         return;
     }
+    sv_deferredFastRestart = qfalse; /* a restart pending for the old level is moot */
 
 #ifdef _LAGDEBUG
     Com_DPrintfLogfile("SV_SpawnServer Begin\n");
