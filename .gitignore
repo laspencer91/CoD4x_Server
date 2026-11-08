@@ -2,6 +2,8 @@
 #C file types to ignore
 
 *.o
+# Header dependencies written next to each object (makefile DEPFLAGS)
+/obj/*.d
 
 *.dll
 

@@ -46,8 +46,11 @@ CPP=g++
 WIN_DEFINES=WINVER=0x501
 LINUX_DEFINES=_GNU_SOURCE _FILE_OFFSET_BITS=64
 COMMON_FLAGS=-m32 -msse2 -mfpmath=sse -Wall -fno-omit-frame-pointer -fmax-errors=15
-CFLAGS=$(COMMON_FLAGS) -std=gnu11
-CXXFLAGS=$(COMMON_FLAGS) -std=gnu++11
+# -MMD -MP: each object records the headers it includes (obj/*.d, read at the end of this file), so a header-only
+# change, such as a regenerated src/recoil mirror, rebuilds its includers instead of linking stale objects.
+DEPFLAGS=-MMD -MP
+CFLAGS=$(COMMON_FLAGS) -std=gnu11 $(DEPFLAGS)
+CXXFLAGS=$(COMMON_FLAGS) -std=gnu++11 $(DEPFLAGS)
 
 ifeq ($(DEBUG), true)
 DCFLAGS=-fno-pie -O0 -g
@@ -96,7 +99,7 @@ RESOURCE_FILE=src/win32/win_cod4.res
 DEF_FILE=$(BIN_DIR)/$(TARGETNAME).def
 INTERFACE_LIB=$(PLUGINS_DIR)/libcom_plugin.a
 ADDITIONAL_OBJ=$(INTERFACE_LIB)
-CLEAN=-del $(subst /,\\,$(OBJ_DIR)/*.o $(DEF_FILE) $(INTERFACE_LIB))
+CLEAN=-del $(subst /,\\,$(OBJ_DIR)/*.o $(OBJ_DIR)/*.d $(DEF_FILE) $(INTERFACE_LIB))
 else
 #################
 # LINUX variables.
@@ -116,7 +119,7 @@ endif
 
 RESOURCE_FILE=
 ADDITIONAL_OBJ=
-CLEAN=-rm $(OBJ_DIR)/*.o $(DEF_FILE) $(INTERFACE_LIB)
+CLEAN=-rm -f $(OBJ_DIR)/*.o $(OBJ_DIR)/*.d $(DEF_FILE) $(INTERFACE_LIB)
 
 endif
 
@@ -313,3 +316,5 @@ test-tickrate: $(BIN_DIR)/tickrate_test$(BIN_EXT)
 
 $(BIN_DIR)/tickrate_test$(BIN_EXT): tools/tests/tickrate_test.c src/tickrate.h
 	$(CC) $(COMMON_FLAGS) -std=c11 -UNDEBUG -O2 -Wall -Wextra -Werror $< -lm -o $@
+
+-include $(OBJ_DIR)/*.d
