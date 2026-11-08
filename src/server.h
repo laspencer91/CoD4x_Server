@@ -492,6 +492,7 @@ void SV_RegisterTickrate(void);
 void SV_RegisterRecoil(void);
 void SV_ConfigureRecoil(void);
 qboolean SV_RecoilClientCompatible(const char *userinfo);
+void SV_RecoilEnterWorld(client_t *cl);      /* SV_ClientEnterWorld: fresh simulation */
 void SV_RecoilBeginCommand(client_t *cl);    /* SV_ClientThink: fold the simulated view kick */
 void SV_RecoilEndCommand(client_t *cl);
 void SV_RecoilWriteCorrection(client_t *cl, msg_t *msg); /* SV_EndClientSnapshot: svc_recoil */

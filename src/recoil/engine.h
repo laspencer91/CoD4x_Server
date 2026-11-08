@@ -13,6 +13,18 @@ enum { RECOIL_EV_FIRE_WEAPON = 26, RECOIL_EV_FIRE_WEAPON_LASTSHOT = 27, RECOIL_E
        RECOIL_PM_SPECTATOR = 4, RECOIL_PM_LASTSTAND = 6, RECOIL_WEAPFLAG_OFFHAND = 2,
        RECOIL_POF_FOLLOW = 2, RECOIL_POF_PLAYER = 4, RECOIL_WEAPONS = 128 };
 
+/* The player state's event ring: BG_AddPredictableEventToPlayerstate (server _bg_misc.asm:2830-2847) stores
+ * at events[sequence & 3] and advances sequence = (sequence + 1) & 0xff, so the counter wraps at 256. */
+enum { RECOIL_PS_EVENTS = 4, RECOIL_EVENT_SEQUENCE_MASK = 0xff };
+
+/* How many events a Pmove added, from eventSequence before and after it. The counter wraps (a footstep every
+ * few yards reaches 255), and only the last RECOIL_PS_EVENTS remain in the ring. */
+static inline int Recoil_NewEvents(int before, int after)
+{
+    const int added = (after - before) & RECOIL_EVENT_SEQUENCE_MASK;
+    return added > RECOIL_PS_EVENTS ? RECOIL_PS_EVENTS : added;
+}
+
 /* The events G_PlayerEvent passes to BG_WeaponFireRecoil (server _g_active_mp.asm:326-357). */
 static inline int Recoil_FireEvent(int event)
 {
@@ -45,8 +57,7 @@ static inline recoil_step_t Recoil_SampleStep(int weapFlags, int offHandIndex, u
     return step;
 }
 
-/* Fire-event inputs from the player state after the usercmd's Pmove; the caller sets time, shooter, index
- * and def. */
+/* Fire-event inputs from the player state after the usercmd's Pmove; the caller sets time, shooter and def. */
 static inline recoil_shot_t Recoil_SampleShot(int weapFlags, int offHandIndex, uint32_t weapon, float posFrac,
     int weaponRestrictKickTime)
 {

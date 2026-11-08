@@ -14,8 +14,12 @@ A non-native model (1, continuous) is server-authoritative:
   (`asmsource/_g_active_mp.asm`). It runs the native function, then advances the simulation for the
   shot and scales the native gun kick, which moves this client's bullets.
 - **Corrections.** `SV_EndClientSnapshot` sends `svc_recoil` (the state after the client's last
-  command) while it moves or changes, plus a 500 ms heartbeat. Only clients admitted with
-  `cl_recoilProtocol` 2 receive it.
+  command) once after each new shot, plus a 500 ms heartbeat, whatever the snapshot rate. Only
+  clients admitted with `cl_recoilProtocol` 2 receive it. `SV_ClientEnterWorld` starts each client from a
+  fresh simulation.
+- **Time and randomness.** The simulation runs on the command time clamped as `ClientThink_real` clamps
+  it, so recoil follows game time. Each shot's roll hashes the client's shot count, never a time the
+  client chooses.
 - **Not simulated:** bots, followers (`otherFlags`), and `g_synchronousClients` mode stay native.
 
 The mod supplies `recoil/model_<id>.profile` as a server-only loose file.

@@ -1192,6 +1192,7 @@ void SV_ClientEnterWorld( client_t *client, usercmd_t *cmd ) {
 
 	Com_DPrintf(CON_CHANNEL_SERVER, "Going from CS_PRIMED to CS_ACTIVE for %s\n", client->name );
 	client->state = CS_ACTIVE;
+	SV_RecoilEnterWorld(client);
 
 	// set up the entity for the client
 	clientNum = client - svs.clients;

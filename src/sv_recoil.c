@@ -14,15 +14,17 @@
  * executed usercmd, so everything downstream (bullets, melee, spectators, demos) sees stock-shaped
  * angles; G_PlayerEvent's recoil call (asm) reaches SV_Recoil_FireRecoil for each fire event; and
  * SV_RecoilWriteCorrection sends the state so the client's prediction converges on it. */
-enum { RECOIL_HEARTBEAT_MSEC = 500 };
+/* RECOIL_HEARTBEAT_MSEC bounds how long a misprediction no shot reveals can last. ClientThink_real runs each
+ * command at its time clamped to [level.time - RECOIL_GAME_LAG_MSEC, level.time + RECOIL_GAME_LEAD_MSEC]
+ * (_g_active_mp.asm, ClientThink_real_10). */
+enum { RECOIL_HEARTBEAT_MSEC = 500, RECOIL_GAME_LAG_MSEC = 1000, RECOIL_GAME_LEAD_MSEC = 200 };
 
 void __cdecl BG_WeaponFireRecoil(const playerState_t *ps, float *gunKick, float *viewKick);
 
 typedef struct {
     recoil_sim_t sim;
-    uint32_t shots;                 /* fire events so far in the usercmd being executed */
     qboolean inCommand;
-    recoil_sim_t sent;              /* last correction */
+    uint32_t sentShots;             /* sim.shots in the last correction */
     int sentTime;
 } sv_recoil_client_t;
 
@@ -63,9 +65,9 @@ void SV_ConfigureRecoil(void)
     recoil_contract_t candidate;
     char wire[RECOIL_WIRE_SIZE] = RECOIL_NATIVE_WIRE;
     unsigned model = requestedModel->integer;
-    /* Every level load: weapon indices may change, and every client re-enters the world. */
+    /* Every level load: weapon indices may change. Each client's simulation restarts as it re-enters the world
+     * (SV_RecoilEnterWorld). */
     memset(recoilWeapons, 0, sizeof(recoilWeapons));
-    memset(recoilClients, 0, sizeof(recoilClients));
     if (locked) return;
     if (!Recoil_Model(model)) {
         Com_Error(ERR_DROP, "Unknown recoil_model %u. Use recoil_status to list registered models.", model);
@@ -138,7 +140,27 @@ static const recoil_weapon_kick_t *SV_RecoilWeapon(uint32_t index, const uint32_
         def->iFireTime, param);
 }
 
-/* SV_ClientThink, after the raw command is copied into lastUsercmd: recover to the command's raw time from
+/* The time the game runs a command at (the clamp in ClientThink_real). Recoil follows game time, so a client
+ * that sends times running faster than the game buys no extra recovery. A legitimate client is inside the
+ * window, where this is its own time and its prediction agrees. */
+static uint32_t SV_RecoilGameTime(int commandTime)
+{
+    if (commandTime > level.time + RECOIL_GAME_LEAD_MSEC) commandTime = level.time + RECOIL_GAME_LEAD_MSEC;
+    if (commandTime < level.time - RECOIL_GAME_LAG_MSEC) commandTime = level.time - RECOIL_GAME_LAG_MSEC;
+    return (uint32_t)commandTime;
+}
+
+/* SV_ClientEnterWorld (every connect and every round's restart): a fresh simulation, carried to the client by
+ * the first snapshot. The shot count starts at a random value: rolls hash the count, so starting at 0 gave
+ * every round the same spray, with the same first-shot roll each time. */
+void SV_RecoilEnterWorld(client_t *cl)
+{
+    sv_recoil_client_t *rc = &recoilClients[cl - svs.clients];
+    memset(rc, 0, sizeof(*rc));
+    if (SV_RecoilSimulated(cl)) Com_RandomBytes((byte *)&rc->sim.shots, sizeof(rc->sim.shots));
+}
+
+/* SV_ClientThink, after the raw command is copied into lastUsercmd: recover to the command's game time from
  * the player state before it, then fold the view kick into the copy ClientThink executes (cmds[], plugins
  * and the client's own wire values stay aim-only). */
 void SV_RecoilBeginCommand(client_t *cl)
@@ -154,10 +176,9 @@ void SV_RecoilBeginCommand(client_t *cl)
     step = Recoil_SampleStep(ps->weapFlags, ps->offHandIndex, ps->weapon, ps->fWeaponPosFrac, ps->pm_type,
         ps->otherFlags);
     step.def = SV_RecoilWeapon(step.weapon, &param);
-    Recoil_Advance(&rc->sim, activeModel, param, &step, (uint32_t)cl->lastUsercmd.serverTime);
+    Recoil_Advance(&rc->sim, activeModel, param, &step, SV_RecoilGameTime(cl->lastUsercmd.serverTime));
     Recoil_Offset(&rc->sim, fold);
     Recoil_FoldAngles(cl->lastUsercmd.angles, fold, 1);
-    rc->shots = 0;
     rc->inCommand = qtrue;
 }
 
@@ -179,30 +200,28 @@ void __cdecl SV_Recoil_FireRecoil(const playerState_t *ps, float *gunKick, float
     if (ps->clientNum < 0 || ps->clientNum >= MAX_CLIENTS || !(rc = &recoilClients[ps->clientNum])->inCommand) return;
     shot = Recoil_SampleShot(ps->weapFlags, ps->offHandIndex, ps->weapon, ps->fWeaponPosFrac,
         ps->weaponRestrictKickTime);
-    shot.time = rc->sim.time;   /* the command's raw time: SV_RecoilBeginCommand advanced to it */
+    shot.time = rc->sim.time;   /* the command's game time: SV_RecoilBeginCommand advanced to it */
     shot.shooter = (uint32_t)ps->clientNum;
-    shot.index = rc->shots++;
     if (!(shot.def = SV_RecoilWeapon(shot.weapon, &param))) return;
     Recoil_ScaleGunKick(gunKick, before, Recoil_Shot(&rc->sim, activeModel, param, &shot).gun_scale);
-    Com_DPrintf(CON_CHANNEL_SERVER, "recoil: client %d t=%u shot=%u speed=%d,%d,%d\n", ps->clientNum, shot.time,
-        shot.index, rc->sim.kick.speed[0], rc->sim.kick.speed[1], rc->sim.kick.speed[2]);
+    Com_DPrintf(CON_CHANNEL_SERVER, "recoil: client %d t=%u shots=%u speed=%d,%d,%d\n", ps->clientNum, shot.time,
+        rc->sim.shots, rc->sim.kick.speed[0], rc->sim.kick.speed[1], rc->sim.kick.speed[2]);
 }
 
-/* SV_EndClientSnapshot: the state after the client's last executed command, while it moves or changed, and
- * as a heartbeat at rest so a client-only misprediction cannot linger. */
+/* SV_EndClientSnapshot: the state after the client's last executed command. Between shots both sides recover
+ * from the same inputs, so only a shot gives the client something to check: one correction follows each new
+ * shot, whatever the snapshot rate. The heartbeat repairs the rest, such as a shot the client predicted and
+ * the server never fired. */
 void SV_RecoilWriteCorrection(client_t *cl, msg_t *msg)
 {
     sv_recoil_client_t *rc = &recoilClients[cl - svs.clients];
     uint32_t packed[RECOIL_PACKED];
     int i;
     if (!SV_RecoilSimulated(cl) || !rc->sim.time) return;
-    /* The time advances every usercmd; only the kick and model state decide whether the client needs it. */
-    if (Recoil_AtRest(&rc->sim) && !memcmp(&rc->sent.kick, &rc->sim.kick, sizeof(rc->sim.kick)) &&
-        !memcmp(rc->sent.model, rc->sim.model, sizeof(rc->sim.model)) &&
-        svs.time - rc->sentTime < RECOIL_HEARTBEAT_MSEC) return;
+    if (rc->sim.shots == rc->sentShots && svs.time - rc->sentTime < RECOIL_HEARTBEAT_MSEC) return;
     Recoil_Pack(&rc->sim, packed);
     MSG_WriteByte(msg, svc_recoil);
     for (i = 0; i < RECOIL_PACKED; ++i) MSG_WriteLong(msg, (int)packed[i]);
-    rc->sent = rc->sim;
+    rc->sentShots = rc->sim.shots;
     rc->sentTime = svs.time;
 }

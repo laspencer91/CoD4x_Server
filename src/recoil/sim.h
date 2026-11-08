@@ -19,7 +19,8 @@ enum { RECOIL_SCALE = 10000, RECOIL_AXES = 3, RECOIL_CEILING = 10000000, RECOIL_
 typedef struct { int32_t angle[RECOIL_AXES], speed[RECOIL_AXES]; } recoil_kick_t; /* pitch, yaw, roll */
 
 typedef struct {
-    uint32_t time;          /* raw usercmd time of the last advance; 0 = unset */
+    uint32_t time;          /* usercmd time of the last advance; 0 = unset */
+    uint32_t shots;         /* fire events simulated so far: picks each shot's roll; survives Recoil_Reset */
     recoil_kick_t kick;
     uint64_t model[4];      /* private to the active model */
 } recoil_sim_t;
@@ -41,7 +42,8 @@ typedef struct {
 
 /* One fire event, sampled from the player state after the usercmd's Pmove (Recoil_SampleShot). */
 typedef struct {
-    uint32_t time, shooter, index, weapon;  /* raw usercmd time, client, order within the usercmd */
+    uint32_t time, shooter, weapon;         /* usercmd time, client, weapon index */
+    uint32_t number;                        /* the sim's shot count before this shot; set by Recoil_Shot */
     const recoil_weapon_kick_t *def;
     uint8_t ads_full, reduced;              /* fWeaponPosFrac == 1; weaponRestrictKickTime > 0 */
 } recoil_shot_t;
@@ -73,13 +75,14 @@ static inline uint64_t Recoil_Mix(uint64_t value)
     return value ^ (value >> 31);
 }
 
-/* History-free: one disputed shot never shifts another (ScrapCore counter_hash). */
+/* Counter-based (ScrapCore counter_hash): the shooter's n-th shot always gets the n-th roll. No input is the
+ * client's choice. The command time must stay out: a modified client could hold a shot back a few ms and send
+ * it at whichever time rolls the least kick. */
 static inline uint64_t Recoil_Hash(uint64_t domain, const recoil_shot_t *shot)
 {
     uint64_t hash = domain;
     hash = Recoil_Mix(hash ^ Recoil_Mix(shot->shooter));
-    hash = Recoil_Mix(hash ^ Recoil_Mix(shot->time));
-    hash = Recoil_Mix(hash ^ Recoil_Mix(shot->index));
+    hash = Recoil_Mix(hash ^ Recoil_Mix(shot->number));
     return Recoil_Mix(hash ^ Recoil_Mix(shot->weapon));
 }
 
@@ -87,6 +90,25 @@ static inline uint64_t Recoil_Hash(uint64_t domain, const recoil_shot_t *shot)
 static inline int32_t Recoil_Sample(int32_t a, int32_t b, uint64_t hash)
 {
     return a + (int32_t)((int64_t)(b - a) * (int64_t)(hash >> 40) / (INT64_C(1) << 24));
+}
+
+/* The impulse, in basis points, that moves a kick `distance` basis points as far. The view kick's recovery pulls
+ * back at a constant rate (CG_KickAngles), so its distance grows with the square of the impulse. The gun kick
+ * (BG_CalculateWeaponPosition_GunRecoil_SingleAngle) adds drag and grows less steeply, so the same impulse
+ * share opens it a little further than `distance`. */
+static inline uint32_t Recoil_DistanceScale(uint32_t distance)
+{
+    uint64_t rest = (uint64_t)distance * RECOIL_SCALE, root = 0, bit = UINT64_C(1) << 62;
+    while (bit > rest) bit >>= 2;
+    for (; bit; bit >>= 2) {    /* integer square root, rounded down */
+        if (rest >= root + bit) {
+            rest -= root + bit;
+            root = (root >> 1) + bit;
+        } else {
+            root >>= 1;
+        }
+    }
+    return (uint32_t)root;
 }
 
 /* Rounds half away from zero. Exact for every float: value * 1000 fits a double's mantissa. */
@@ -164,13 +186,16 @@ static inline int Recoil_AtRest(const recoil_sim_t *sim)
     return !memcmp(&sim->kick, &rest, sizeof(rest));
 }
 
+/* Clears the kick and model state. The shot count carries on, so a new life does not replay the last one's rolls. */
 static inline void Recoil_Reset(recoil_sim_t *sim, uint32_t time)
 {
+    const uint32_t shots = sim->shots;
     memset(sim, 0, sizeof(*sim));
     sim->time = time;
+    sim->shots = shots;
 }
 
-/* Recover to raw usercmd time: one slice per grid boundary crossed, so any split of the interval agrees.
+/* Recover to usercmd time: one slice per grid boundary crossed, so any split of the interval agrees.
  * param is the step weapon's profile entry (NULL: native recovery). */
 static inline void Recoil_Advance(recoil_sim_t *sim, const recoil_model_t *model, const uint32_t *param,
     const recoil_step_t *step, uint32_t time)
@@ -190,19 +215,23 @@ static inline void Recoil_Advance(recoil_sim_t *sim, const recoil_model_t *model
 static inline recoil_shot_result_t Recoil_Shot(recoil_sim_t *sim, const recoil_model_t *model,
     const uint32_t *param, const recoil_shot_t *shot)
 {
-    recoil_shot_result_t r = Recoil_NativeShot(shot);
-    if (param && model->shot) model->shot(sim, param, shot, &r);
+    recoil_shot_t numbered = *shot;
+    recoil_shot_result_t r;
+    numbered.number = sim->shots++;
+    r = Recoil_NativeShot(&numbered);
+    if (param && model->shot) model->shot(sim, param, &numbered, &r);
     memcpy(sim->kick.speed, r.view, sizeof(sim->kick.speed));
     return r;
 }
 
 /* The server's correction message (svc_recoil): the whole state as 32-bit words, in this order. */
-enum { RECOIL_PACKED = 15 }; /* time, angle[3], speed[3], model[4] as low/high halves */
-typedef char recoil_packed_fits[RECOIL_PACKED == 1 + 2 * RECOIL_AXES + 2 * 4 ? 1 : -1];
+enum { RECOIL_PACKED = 16 }; /* time, shots, angle[3], speed[3], model[4] as low/high halves */
+typedef char recoil_packed_fits[RECOIL_PACKED == 2 + 2 * RECOIL_AXES + 2 * 4 ? 1 : -1];
 static inline void Recoil_Pack(const recoil_sim_t *sim, uint32_t out[RECOIL_PACKED])
 {
     int i, n = 0;
     out[n++] = sim->time;
+    out[n++] = sim->shots;
     for (i = 0; i < RECOIL_AXES; ++i) out[n++] = (uint32_t)sim->kick.angle[i];
     for (i = 0; i < RECOIL_AXES; ++i) out[n++] = (uint32_t)sim->kick.speed[i];
     for (i = 0; i < 4; ++i) { out[n++] = (uint32_t)sim->model[i]; out[n++] = (uint32_t)(sim->model[i] >> 32); }
@@ -212,6 +241,7 @@ static inline void Recoil_Unpack(recoil_sim_t *sim, const uint32_t in[RECOIL_PAC
 {
     int i, n = 0;
     sim->time = in[n++];
+    sim->shots = in[n++];
     for (i = 0; i < RECOIL_AXES; ++i) sim->kick.angle[i] = (int32_t)in[n++];
     for (i = 0; i < RECOIL_AXES; ++i) sim->kick.speed[i] = (int32_t)in[n++];
     for (i = 0; i < 4; ++i) { sim->model[i] = in[n] | (uint64_t)in[n + 1] << 32; n += 2; }
