@@ -24,7 +24,8 @@ enum { RECOIL_WIRE_VERSION = 1, RECOIL_PROTOCOL = 2, RECOIL_MAX_WEAPONS = 16, RE
 /* Model IDs are permanent. Native is never simulated: it stays stock and client-trusted. */
 static const recoil_model_t recoil_models[] = {
     {RECOIL_NATIVE, "native", NULL, 0, NULL, NULL, NULL},
-    {RECOIL_CONTINUOUS, "continuous", recoil_continuous_params, 3, Recoil_ContinuousValidate, Recoil_ContinuousShot, NULL},
+    {RECOIL_CONTINUOUS, "continuous", recoil_continuous_params, sizeof(recoil_continuous_params) / sizeof(*recoil_continuous_params),
+        Recoil_ContinuousValidate, Recoil_ContinuousShot, NULL},
 };
 
 typedef struct {

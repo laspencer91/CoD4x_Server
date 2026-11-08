@@ -70,7 +70,7 @@ enum svc_ops_e {
 	svc_configdata,
 	svc_configclient,
 	svc_acdata,
-	svc_recoil                  // [15 longs] server-authoritative recoil state; only to cl_recoilProtocol >= 2
+	svc_recoil                  // [16 longs] server-authoritative recoil state; only to cl_recoilProtocol >= 2
 };
 
 
